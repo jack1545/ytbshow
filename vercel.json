@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "app/api/**/*": {
+      "maxDuration": 300
+    }
+  },
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install"
+}
