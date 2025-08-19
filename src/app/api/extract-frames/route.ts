@@ -6,6 +6,9 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 
+// Create agent to avoid bot detection
+const agent = ytdl.createAgent([]);
+
 export async function POST(request: NextRequest) {
   try {
     const { url, frameRate = 1 } = await request.json();
@@ -15,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const info = await withRetry(
-      () => ytdl.getInfo(url),
+      () => ytdl.getInfo(url, { agent }),
       {
         maxRetries: 3,
         initialDelay: 1000,
@@ -38,9 +41,10 @@ export async function POST(request: NextRequest) {
     const videoId = new URL(url).searchParams.get('v') || Date.now().toString();
     const videoPath = join(tempDir, `${videoId}.mp4`);
     
-    // Download video with timeout
+    // Download video with agent
     const videoStream = ytdl(url, { 
-      format: videoFormat
+      format: videoFormat,
+      agent
     });
     const writeStream = (await import('fs')).createWriteStream(videoPath);
     

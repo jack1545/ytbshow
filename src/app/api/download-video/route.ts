@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import ytdl from '@distube/ytdl-core';
 import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 
+// Create agent to avoid bot detection
+const agent = ytdl.createAgent([]);
+
 export async function POST(request: NextRequest) {
   try {
     const { url, quality = 'highest' } = await request.json();
@@ -11,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     const info = await withRetry(
-      () => ytdl.getInfo(url),
+      () => ytdl.getInfo(url, { agent }),
       {
         maxRetries: 3,
         initialDelay: 1000,
@@ -29,7 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     const videoStream = ytdl(url, { 
-      format
+      format,
+      agent
     });
     
     const headers = new Headers({
