@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (error) {
         console.log(`Failed with player client ${client} for download:`, getYouTubeErrorMessage(error));
+        console.log(`Raw error details:`, error);
         lastError = error instanceof Error ? error : new Error(String(error));
         continue;
       }

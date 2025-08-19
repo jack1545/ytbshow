@@ -48,7 +48,8 @@ export async function POST(request: NextRequest) {
           description: info.videoDetails.description
         });
       } catch (error) {
-        console.log(`Failed with player client ${client}:`, getYouTubeErrorMessage(error));
+        console.log(`Failed with player client ${client} for video info:`, getYouTubeErrorMessage(error));
+        console.log(`Raw error details:`, error);
         lastError = error instanceof Error ? error : new Error(String(error));
         continue;
       }

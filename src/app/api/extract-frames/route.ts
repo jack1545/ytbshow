@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
         break;
       } catch (error) {
         console.log(`Failed with player client ${client} for frame extraction:`, getYouTubeErrorMessage(error));
+        console.log(`Raw error details:`, error);
         lastError = error instanceof Error ? error : new Error(String(error));
         continue;
       }
