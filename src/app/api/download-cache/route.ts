@@ -132,12 +132,17 @@ export async function POST(request: NextRequest) {
       console.error('youtubei.js error:', getYouTubeErrorMessage(error));
       
       // 尝试使用oEmbed API获取基本信息
+      console.log('Attempting oEmbed fallback for URL:', url);
       try {
-        const videoIdMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+        const videoIdMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([^"&?\/\s]{11})/);
+        console.log('Video ID match result:', videoIdMatch);
         if (videoIdMatch) {
           const videoId = videoIdMatch[1];
+          console.log('Extracted video ID:', videoId);
           const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+          console.log('Fetching oEmbed data from:', oembedUrl);
           const oembedResponse = await fetch(oembedUrl);
+          console.log('oEmbed response status:', oembedResponse.status);
           
           if (oembedResponse.ok) {
             const oembedData = await oembedResponse.json();

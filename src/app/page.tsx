@@ -90,7 +90,29 @@ export default function Home() {
         }
       } else {
         const error = await response.json();
-        toast.error(error.error || '缓存失败', { id: toastId });
+        if (response.status === 503) {
+          // 显示详细的错误信息和建议
+          toast.error(
+            error.suggestion 
+              ? `${error.error}\n\n建议：${error.suggestion}` 
+              : error.error || '视频下载服务暂时不可用',
+            { 
+              id: toastId,
+              duration: 8000 // 延长显示时间
+            }
+          );
+          
+          // 如果有视频信息，仍然可以显示
+          if (error.videoInfo) {
+            setVideoInfo({
+              title: error.videoInfo.title,
+              author: error.videoInfo.author,
+              thumbnail: error.videoInfo.thumbnail
+            });
+          }
+        } else {
+          toast.error(error.error || '缓存失败', { id: toastId });
+        }
       }
     } catch (error) {
       console.error('Error caching video:', error);
