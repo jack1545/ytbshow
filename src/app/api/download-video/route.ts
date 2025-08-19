@@ -3,6 +3,7 @@ import ytdl from '@distube/ytdl-core';
 import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 
 // Create agent with advanced options to avoid bot detection and improve connection reliability
+// Using empty cookies array but with optimized agent options
 const agent = ytdl.createAgent([], {
   pipelining: 1, // Reduce pipelining to avoid overwhelming YouTube servers
   maxRedirections: 5, // Allow more redirections
@@ -11,57 +12,70 @@ const agent = ytdl.createAgent([], {
   connectTimeout: 30000 // 30 second connection timeout
 });
 
+// Alternative player clients to try if default fails
+const playerClients = ['WEB_EMBEDDED', 'IOS', 'ANDROID', 'TV'];
+
 export async function POST(request: NextRequest) {
   try {
-    const { url, quality = 'highest' } = await request.json();
+    const { url, quality } = await request.json();
     
-    if (!url || !ytdl.validateURL(url)) {
-      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    const info = await withRetry(
-      () => ytdl.getInfo(url, { agent }),
-      {
-        maxRetries: 3,
-        initialDelay: 1000,
-        maxDelay: 10000,
-        onRetry: (error, attempt) => {
-          console.log(`Retry attempt ${attempt} for video download:`, error.message);
+    // Try different player clients as fallback strategy
+    let lastError: any;
+    
+    for (const client of playerClients) {
+      try {
+        console.log(`Trying player client for download: ${client}`);
+        
+        // Use retry mechanism for getting video info with specific client
+        const info = await withRetry(
+          () => ytdl.getInfo(url, { 
+            agent,
+            playerClients: [client as any]
+          }),
+          `video download info with ${client} client`
+        );
+
+        // Find the best format based on quality preference
+        const formats = info.formats.filter(format => 
+          format.hasVideo && format.hasAudio && format.container === 'mp4'
+        );
+        
+        let selectedFormat;
+        if (quality === 'highest') {
+          selectedFormat = formats.reduce((prev, current) => 
+            (parseInt(current.height || '0') > parseInt(prev.height || '0')) ? current : prev
+          );
+        } else {
+          selectedFormat = formats.find(format => format.qualityLabel === quality) || formats[0];
         }
+
+        if (!selectedFormat) {
+          throw new Error('No suitable format found');
+        }
+
+        console.log(`Success with player client for download: ${client}`);
+        return NextResponse.json({
+          downloadUrl: selectedFormat.url,
+          title: info.videoDetails.title,
+          quality: selectedFormat.qualityLabel,
+          filesize: selectedFormat.contentLength
+        });
+      } catch (error) {
+        console.log(`Failed with player client ${client} for download:`, getYouTubeErrorMessage(error));
+        lastError = error;
+        continue;
       }
-    );
-    
-    const format = ytdl.chooseFormat(info.formats, { quality });
-    
-    if (!format) {
-      return NextResponse.json({ error: 'No suitable format found' }, { status: 400 });
     }
-
-    const videoStream = ytdl(url, { 
-      format,
-      agent
-    });
     
-    const headers = new Headers({
-      'Content-Type': format.mimeType || 'video/mp4',
-      'Content-Disposition': `attachment; filename="${info.videoDetails.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.mp4"`,
-    });
-
-    const readableStream = new ReadableStream({
-      start(controller) {
-        videoStream.on('data', (chunk) => controller.enqueue(chunk));
-        videoStream.on('end', () => controller.close());
-        videoStream.on('error', (error) => controller.error(error));
-      },
-    });
-
-    return new NextResponse(readableStream, {
-      headers,
-      status: 200,
-    });
+    // If all clients failed, throw the last error
+    throw lastError;
   } catch (error) {
     console.error('Error downloading video:', error);
-    const message = getYouTubeErrorMessage(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const errorMessage = getYouTubeErrorMessage(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

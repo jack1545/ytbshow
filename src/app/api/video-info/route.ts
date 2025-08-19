@@ -3,6 +3,7 @@ import ytdl from '@distube/ytdl-core';
 import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 
 // Create agent with advanced options to avoid bot detection and improve connection reliability
+// Using empty cookies array but with optimized agent options
 const agent = ytdl.createAgent([], {
   pipelining: 1, // Reduce pipelining to avoid overwhelming YouTube servers
   maxRedirections: 5, // Allow more redirections
@@ -11,36 +12,55 @@ const agent = ytdl.createAgent([], {
   connectTimeout: 30000 // 30 second connection timeout
 });
 
+// Alternative player clients to try if default fails
+const playerClients = ['WEB_EMBEDDED', 'IOS', 'ANDROID', 'TV'];
+
 export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json();
     
-    if (!url || !ytdl.validateURL(url)) {
-      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    const info = await withRetry(
-      () => ytdl.getInfo(url, { agent }),
-      {
-        maxRetries: 3,
-        initialDelay: 1000,
-        maxDelay: 10000,
-        onRetry: (error, attempt) => {
-          console.log(`Retry attempt ${attempt} for video info:`, error.message);
-        }
-      }
-    );
+    // Try different player clients as fallback strategy
+    let lastError: any;
     
-    return NextResponse.json({
-      title: info.videoDetails.title,
-      thumbnail: info.videoDetails.thumbnails[0].url,
-      duration: info.videoDetails.lengthSeconds,
-      formats: info.formats.filter(format => format.container === 'mp4'),
-      audioFormats: info.formats.filter(format => format.mimeType?.includes('audio')),
-    });
+    for (const client of playerClients) {
+      try {
+        console.log(`Trying player client: ${client}`);
+        
+        // Use retry mechanism for getting video info with specific client
+        const info = await withRetry(
+          () => ytdl.getBasicInfo(url, { 
+            agent,
+            playerClients: [client as any]
+          }),
+          `video info with ${client} client`
+        );
+
+        console.log(`Success with player client: ${client}`);
+        return NextResponse.json({
+          title: info.videoDetails.title,
+          duration: info.videoDetails.lengthSeconds,
+          thumbnail: info.videoDetails.thumbnails[0]?.url,
+          author: info.videoDetails.author.name,
+          viewCount: info.videoDetails.viewCount,
+          uploadDate: info.videoDetails.uploadDate,
+          description: info.videoDetails.description
+        });
+      } catch (error) {
+        console.log(`Failed with player client ${client}:`, getYouTubeErrorMessage(error));
+        lastError = error;
+        continue;
+      }
+    }
+    
+    // If all clients failed, throw the last error
+    throw lastError;
   } catch (error) {
     console.error('Error fetching video info:', error);
-    const message = getYouTubeErrorMessage(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const errorMessage = getYouTubeErrorMessage(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
