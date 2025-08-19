@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ffmpeg from 'fluent-ffmpeg';
-import ytdl from 'ytdl-core';
+import ytdl from '@distube/ytdl-core';
 import { writeFile, mkdir, readdir, readFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
