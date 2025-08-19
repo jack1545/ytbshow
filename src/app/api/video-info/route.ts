@@ -11,14 +11,7 @@ export async function POST(request: NextRequest) {
     }
 
     const info = await withRetry(
-      () => ytdl.getInfo(url, {
-        requestOptions: {
-          timeout: 30000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          }
-        }
-      }),
+      () => ytdl.getInfo(url),
       {
         maxRetries: 3,
         initialDelay: 1000,

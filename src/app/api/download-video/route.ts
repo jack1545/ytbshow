@@ -29,10 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const videoStream = ytdl(url, { 
-      format,
-      requestOptions: {
-        timeout: 30000 // 30 second timeout
-      }
+      format
     });
     
     const headers = new Headers({

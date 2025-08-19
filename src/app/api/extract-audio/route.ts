@@ -42,10 +42,7 @@ export async function POST(request: NextRequest) {
     
     // Download video with timeout
     const videoStream = ytdl(url, { 
-      format: videoFormat,
-      requestOptions: {
-        timeout: 30000 // 30 second timeout
-      }
+      format: videoFormat
     });
     const writeStream = (await import('fs')).createWriteStream(videoPath);
     
