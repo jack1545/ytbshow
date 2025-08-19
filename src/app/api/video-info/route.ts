@@ -8,9 +8,7 @@ const agent = ytdl.createAgent([], {
   maxRedirections: 5, // Allow more redirections
   headersTimeout: 30000, // 30 second header timeout
   bodyTimeout: 60000, // 60 second body timeout
-  connect: {
-    timeout: 30000 // 30 second connection timeout
-  }
+  connectTimeout: 30000 // 30 second connection timeout
 });
 
 export async function POST(request: NextRequest) {
