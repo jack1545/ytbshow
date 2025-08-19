@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ffmpeg from 'fluent-ffmpeg';
 import ytdl from '@distube/ytdl-core';
-import { writeFile, mkdir, readFile } from 'fs/promises';
+import { mkdir, readFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
@@ -10,14 +10,13 @@ import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 // Using empty cookies array but with optimized agent options
 const agent = ytdl.createAgent([], {
   pipelining: 1, // Reduce pipelining to avoid overwhelming YouTube servers
-  maxRedirections: 5, // Allow more redirections
   headersTimeout: 30000, // 30 second header timeout
   bodyTimeout: 60000, // 60 second body timeout
   connectTimeout: 30000 // 30 second connection timeout
 });
 
 // Alternative player clients to try if default fails
-const playerClients = ['WEB_EMBEDDED', 'IOS', 'ANDROID', 'TV'];
+const playerClients = ['WEB_EMBEDDED', 'IOS', 'ANDROID', 'TV'] as const;
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,8 +27,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Try different player clients as fallback strategy
-    let lastError: any;
-    let info: any;
+    let lastError: Error = new Error('No player clients available');
+    let info: ytdl.videoInfo | undefined = undefined;
     
     for (const client of playerClients) {
       try {
@@ -38,16 +37,15 @@ export async function POST(request: NextRequest) {
         info = await withRetry(
           () => ytdl.getInfo(url, { 
             agent,
-            playerClients: [client as any]
-          }),
-          `audio extraction info with ${client} client`
+            playerClients: [client]
+          })
         );
         
         console.log(`Success with player client for audio extraction: ${client}`);
         break;
       } catch (error) {
         console.log(`Failed with player client ${client} for audio extraction:`, getYouTubeErrorMessage(error));
-        lastError = error;
+        lastError = error instanceof Error ? error : new Error(String(error));
         continue;
       }
     }

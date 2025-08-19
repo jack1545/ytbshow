@@ -6,14 +6,13 @@ import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 // Using empty cookies array but with optimized agent options
 const agent = ytdl.createAgent([], {
   pipelining: 1, // Reduce pipelining to avoid overwhelming YouTube servers
-  maxRedirections: 5, // Allow more redirections
   headersTimeout: 30000, // 30 second header timeout
   bodyTimeout: 60000, // 60 second body timeout
   connectTimeout: 30000 // 30 second connection timeout
 });
 
 // Alternative player clients to try if default fails
-const playerClients = ['WEB_EMBEDDED', 'IOS', 'ANDROID', 'TV'];
+const playerClients = ['WEB_EMBEDDED', 'IOS', 'ANDROID', 'TV'] as const;
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Try different player clients as fallback strategy
-    let lastError: any;
+    let lastError: Error = new Error('No player clients available');
     
     for (const client of playerClients) {
       try {
@@ -34,9 +33,8 @@ export async function POST(request: NextRequest) {
         const info = await withRetry(
           () => ytdl.getBasicInfo(url, { 
             agent,
-            playerClients: [client as any]
-          }),
-          `video info with ${client} client`
+            playerClients: [client]
+          })
         );
 
         console.log(`Success with player client: ${client}`);
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
         });
       } catch (error) {
         console.log(`Failed with player client ${client}:`, getYouTubeErrorMessage(error));
-        lastError = error;
+        lastError = error instanceof Error ? error : new Error(String(error));
         continue;
       }
     }

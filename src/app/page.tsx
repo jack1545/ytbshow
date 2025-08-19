@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Film, Image, Music, Loader2 } from 'lucide-react';
+import { Download, Film, Music, Loader2 } from 'lucide-react';
+import Image from 'next/image';
 
 interface VideoInfo {
   title: string;
@@ -245,9 +246,11 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <div className="flex gap-6">
-                <img 
+                <Image 
                   src={videoInfo.thumbnail} 
                   alt={videoInfo.title}
+                  width={256}
+                  height={144}
                   className="w-64 h-36 object-cover rounded-lg"
                 />
                 <div className="flex-1">
@@ -279,7 +282,7 @@ export default function Home() {
                           className="w-32"
                         />
                         <Button onClick={handleExtractFrames} disabled={loading}>
-                          <Image className="w-4 h-4 mr-2" />
+                          <Film className="w-4 h-4 mr-2" />
                           {loading ? '提取中...' : '提取帧'}
                         </Button>
                       </div>
@@ -307,9 +310,11 @@ export default function Home() {
                           <div className="grid grid-cols-4 gap-4 max-h-96 overflow-y-auto p-2 border rounded-lg">
                             {frames.map((frame, index) => (
                               <div key={index} className="relative">
-                                <img
+                                <Image
                                   src={frame.url}
                                   alt={`Frame ${index + 1}`}
+                                  width={96}
+                                  height={96}
                                   className="w-full h-24 object-cover rounded border"
                                 />
                                 <div className="absolute top-1 left-1">
