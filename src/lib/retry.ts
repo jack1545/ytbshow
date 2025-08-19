@@ -66,6 +66,20 @@ export function isNetworkError(error: Error | unknown): boolean {
 
 export function getYouTubeErrorMessage(error: Error | unknown): string {
   const message = error instanceof Error ? error.message : String(error || '');
+  const err = error as Record<string, unknown>;
+  
+  // Check for HTTP status codes
+  if (err.statusCode === 410 || message.includes('Status code: 410')) {
+    return 'This video is no longer available. It may have been deleted, made private, or removed by the uploader.';
+  }
+  
+  if (err.statusCode === 403 || message.includes('Status code: 403')) {
+    return 'Access to this video is forbidden. It may be private, region-blocked, or require authentication.';
+  }
+  
+  if (err.statusCode === 404 || message.includes('Status code: 404')) {
+    return 'Video not found. Please check the URL and try again.';
+  }
   
   if (isNetworkError(error)) {
     return 'Network error: Unable to connect to YouTube. This could be due to network issues or YouTube being temporarily unavailable. Please try again later.';
