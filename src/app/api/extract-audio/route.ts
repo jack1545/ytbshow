@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import fsSync from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+// import { exec } from 'child_process'; // 暂时未使用
+import { spawn } from 'child_process';
+// import { promisify } from 'util'; // 暂时未使用
+import { createHash } from 'crypto';
 
-const execAsync = promisify(exec);
+// const execAsync = promisify(exec); // 暂时注释掉未使用的变量
 const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
 const AUDIO_DIR = path.join(process.cwd(), 'cache', 'audio');
 
@@ -22,10 +24,10 @@ const ensureAudioDir = () => {
   }
 };
 
-// 生成视频文件的唯一标识符
-const generateVideoId = (url: string): string => {
-  return createHash('md5').update(url).digest('hex');
-};
+// 生成视频文件的唯一标识符 (暂时未使用)
+// const generateVideoId = (url: string): string => {
+//   return createHash('md5').update(url).digest('hex');
+// };
 
 export async function POST(request: NextRequest) {
   try {

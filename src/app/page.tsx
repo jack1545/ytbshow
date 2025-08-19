@@ -13,6 +13,7 @@ import Image from 'next/image';
 
 interface VideoInfo {
   title: string;
+  author?: string;
   thumbnail: string;
   duration: string;
   formats: Array<{
@@ -107,7 +108,10 @@ export default function Home() {
             setVideoInfo({
               title: error.videoInfo.title,
               author: error.videoInfo.author,
-              thumbnail: error.videoInfo.thumbnail
+              thumbnail: error.videoInfo.thumbnail,
+              duration: '',
+              formats: [],
+              audioFormats: []
             });
           }
         } else {

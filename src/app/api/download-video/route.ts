@@ -1,6 +1,6 @@
 import { Innertube } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
-import { withRetry } from '@/lib/utils';
+// import { withRetry } from '@/lib/utils'; // 暂时未使用
 import { getYouTubeErrorMessage } from '@/lib/youtube-error';
 
 const createYouTubeClient = async () => {

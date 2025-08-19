@@ -6,15 +6,15 @@ const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
 const FRAMES_DIR = path.join(process.cwd(), 'cache', 'frames');
 const AUDIO_DIR = path.join(process.cwd(), 'cache', 'audio');
 
-// 获取文件大小（字节）
-function getFileSize(filePath: string): number {
-  try {
-    const stats = fs.statSync(filePath);
-    return stats.size;
-  } catch {
-    return 0;
-  }
-}
+// 获取文件大小（字节）(暂时未使用)
+// function getFileSize(filePath: string): number {
+//   try {
+//     const stats = fs.statSync(filePath);
+//     return stats.size;
+//   } catch {
+//     return 0;
+//   }
+// }
 
 // 获取目录大小
 function getDirSize(dirPath: string): number {

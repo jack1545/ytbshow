@@ -23,10 +23,10 @@ const ensureFramesDir = (videoId: string) => {
   return framesPath;
 };
 
-// 生成视频文件的唯一标识符
-const generateVideoId = (url: string): string => {
-  return createHash('md5').update(url).digest('hex');
-};
+// 生成视频文件的唯一标识符 (暂时未使用)
+// const generateVideoId = (url: string): string => {
+//   return createHash('md5').update(url).digest('hex');
+// };
 
 export async function POST(request: NextRequest) {
   try {
