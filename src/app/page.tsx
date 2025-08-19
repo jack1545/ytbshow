@@ -31,6 +31,7 @@ export default function Home() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
   const [frames, setFrames] = useState<{ url: string; filename: string }[]>([]);
   const [selectedFrames, setSelectedFrames] = useState<string[]>([]);
   const [audio, setAudio] = useState<string | null>(null);
@@ -69,55 +70,90 @@ export default function Home() {
   };
 
   const handleDownloadVideo = async () => {
-    const toastId = toast.loading('正在准备下载...');
+    const toastId = toast.loading('正在缓存视频到本地...');
     
     try {
-      const response = await fetch('/api/download-video', {
+      const response = await fetch('/api/download-cache', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
       
       if (response.ok) {
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = `${videoInfo?.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.mp4`;
-        a.click();
-        window.URL.revokeObjectURL(downloadUrl);
-        toast.success('视频下载已开始！', { id: toastId });
+        const data = await response.json();
+        if (data.success) {
+          // 存储videoId供后续使用
+          setVideoId(data.videoId);
+          toast.success(data.cached ? '视频已在缓存中！' : '视频缓存成功！', { id: toastId });
+        } else {
+          toast.error('视频缓存失败', { id: toastId });
+        }
       } else {
         const error = await response.json();
-        toast.error(error.error || '下载失败', { id: toastId });
+        toast.error(error.error || '缓存失败', { id: toastId });
       }
     } catch (error) {
-      console.error('Error downloading video:', error);
-      toast.error('下载失败，请重试', { id: toastId });
+      console.error('Error caching video:', error);
+      toast.error('缓存失败，请重试', { id: toastId });
     }
   };
 
   const handleExtractFrames = async () => {
     if (frameRate <= 0) {
-      toast.error('帧率必须大于 0');
+      toast.error('帧数必须大于 0');
       return;
     }
     
+    // 如果没有videoId，先缓存视频
+    if (!videoId) {
+      const cacheToastId = toast.loading('正在缓存视频...');
+      try {
+        const cacheResponse = await fetch('/api/download-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        
+        if (cacheResponse.ok) {
+          const cacheData = await cacheResponse.json();
+          if (cacheData.success) {
+            setVideoId(cacheData.videoId);
+            toast.success('视频缓存成功！', { id: cacheToastId });
+          } else {
+            toast.error('视频缓存失败', { id: cacheToastId });
+            return;
+          }
+        } else {
+          const error = await cacheResponse.json();
+          toast.error(error.error || '缓存失败', { id: cacheToastId });
+          return;
+        }
+      } catch (error) {
+        console.error('Error caching video:', error);
+        toast.error('缓存失败，请重试', { id: cacheToastId });
+        return;
+      }
+    }
+    
     setLoading(true);
-    const toastId = toast.loading('正在提取帧图片...');
+    const toastId = toast.loading('正在从缓存视频提取帧图片...');
     
     try {
       const response = await fetch('/api/extract-frames', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, frameRate }),
+        body: JSON.stringify({ url, videoId, frameCount: frameRate }),
       });
       
       if (response.ok) {
         const data = await response.json();
-        setFrames(data.frames);
-        setSelectedFrames([]);
-        toast.success(`成功提取 ${data.totalFrames} 帧图片！`, { id: toastId });
+        if (data.success) {
+          setFrames(data.frames);
+          setSelectedFrames([]);
+          toast.success(`成功提取 ${data.frameCount} 帧图片！`, { id: toastId });
+        } else {
+          toast.error('提取失败', { id: toastId });
+        }
       } else {
         const error = await response.json();
         toast.error(error.error || '提取失败', { id: toastId });
@@ -131,20 +167,55 @@ export default function Home() {
   };
 
   const handleExtractAudio = async () => {
+    // 如果没有videoId，先缓存视频
+    if (!videoId) {
+      const cacheToastId = toast.loading('正在缓存视频...');
+      try {
+        const cacheResponse = await fetch('/api/download-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        
+        if (cacheResponse.ok) {
+          const cacheData = await cacheResponse.json();
+          if (cacheData.success) {
+            setVideoId(cacheData.videoId);
+            toast.success('视频缓存成功！', { id: cacheToastId });
+          } else {
+            toast.error('视频缓存失败', { id: cacheToastId });
+            return;
+          }
+        } else {
+          const error = await cacheResponse.json();
+          toast.error(error.error || '缓存失败', { id: cacheToastId });
+          return;
+        }
+      } catch (error) {
+        console.error('Error caching video:', error);
+        toast.error('缓存失败，请重试', { id: cacheToastId });
+        return;
+      }
+    }
+    
     setLoading(true);
-    const toastId = toast.loading('正在提取音频...');
+    const toastId = toast.loading('正在从缓存视频提取音频...');
     
     try {
       const response = await fetch('/api/extract-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, videoId }),
       });
       
       if (response.ok) {
         const data = await response.json();
-        setAudio(data.audio);
-        toast.success('音频提取成功！', { id: toastId });
+        if (data.success) {
+          setAudio(data.audio.data);
+          toast.success(data.cached ? '音频已在缓存中！' : '音频提取成功！', { id: toastId });
+        } else {
+          toast.error('提取失败', { id: toastId });
+        }
       } else {
         const error = await response.json();
         toast.error(error.error || '提取失败', { id: toastId });

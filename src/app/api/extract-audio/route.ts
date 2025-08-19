@@ -1,117 +1,137 @@
-import { Innertube } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
-import ffmpeg from 'fluent-ffmpeg';
-import { mkdir, readFile, unlink } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { withRetry } from '@/lib/utils';
-import { getYouTubeErrorMessage } from '@/lib/youtube-error';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 
-const createYouTubeClient = async () => {
-  return await Innertube.create({
-    lang: 'en',
-    location: 'US',
-    retrieve_player: true,
-    enable_safety_mode: false,
-  });
+const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
+const AUDIO_DIR = path.join(process.cwd(), 'cache', 'audio');
+
+// 确保音频目录存在
+const ensureAudioDir = async () => {
+  try {
+    await fs.access(AUDIO_DIR);
+  } catch {
+    await fs.mkdir(AUDIO_DIR, { recursive: true });
+  }
+};
+
+// 生成视频文件的唯一标识符
+const generateVideoId = (url: string): string => {
+  return createHash('md5').update(url).digest('hex');
 };
 
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json();
+    const { url, videoId, format = 'mp3' } = await request.json();
     
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    if (!url && !videoId) {
+      return NextResponse.json({ error: 'URL or videoId is required' }, { status: 400 });
     }
 
-    let youtube;
-    let info;
-    
+    // 生成或使用提供的videoId
+    const actualVideoId = videoId || createHash('md5').update(url).digest('hex');
+    const videoFileName = `${actualVideoId}.mp4`;
+    const videoFilePath = path.join(CACHE_DIR, videoFileName);
+
+    // 检查缓存的视频文件是否存在
     try {
-      youtube = await createYouTubeClient();
-      console.log('Fetching video info with youtubei.js');
-      info = await youtube.getInfo(url);
-    } catch (youtubeError) {
-      console.error('YouTubeJS error:', youtubeError);
-      return NextResponse.json({ 
-        error: 'Audio extraction is temporarily unavailable due to YouTube API limitations. Please try again later or use a different video.' 
-      }, { status: 503 });
-    }
-    
-    // Get streaming data
-    const streamingData = info.streaming_data;
-    if (!streamingData) {
-      throw new Error('No streaming data available');
-    }
-    
-    // Find the best video format for audio extraction
-    const videoFormats = streamingData.adaptive_formats.filter(format => 
-      format.mime_type?.includes('video/mp4') && format.has_video
-    );
-    
-    if (videoFormats.length === 0) {
-      throw new Error('No video formats found');
-    }
-    
-    // Select the highest quality video format
-    const videoFormat = videoFormats.reduce((prev, current) => 
-      (current.bitrate || 0) > (prev.bitrate || 0) ? current : prev
-    );
-    
-    if (!videoFormat || !videoFormat.url) {
-      return NextResponse.json({ error: 'No suitable video format found' }, { status: 400 });
+      await fs.access(videoFilePath);
+    } catch {
+      return NextResponse.json({
+        error: 'Video not found in cache. Please download the video first.',
+        suggestion: 'Use the download-cache API to cache the video before extracting audio.'
+      }, { status: 404 });
     }
 
-    const tempDir = join(tmpdir(), 'ytbshow-audio');
-    await mkdir(tempDir, { recursive: true });
-    
-    const videoId = info.basic_info.id || Date.now().toString();
-    const videoPath = join(tempDir, `${videoId}.mp4`);
-    const audioPath = join(tempDir, `${videoId}.mp3`);
-    
-    // Download video using fetch
-    const response = await fetch(videoFormat.url);
-    if (!response.ok) {
-      throw new Error(`Failed to download video: ${response.statusText}`);
+    // 确保音频目录存在
+    await ensureAudioDir();
+
+    // 创建音频输出文件路径
+    const audioFileName = `${actualVideoId}.${format}`;
+    const audioFilePath = path.join(AUDIO_DIR, audioFileName);
+
+    // 检查音频文件是否已经存在
+    try {
+      await fs.access(audioFilePath);
+      const stats = await fs.stat(audioFilePath);
+      const audioBuffer = await fs.readFile(audioFilePath);
+      
+      console.log(`Audio already extracted: ${audioFileName}`);
+      
+      return NextResponse.json({
+        success: true,
+        audio: {
+          filename: audioFileName,
+          data: `data:audio/${format};base64,${audioBuffer.toString('base64')}`,
+          format,
+          size: stats.size
+        },
+        videoId: actualVideoId,
+        cached: true,
+        message: 'Audio already extracted and cached'
+      });
+    } catch {
+      // 音频文件不存在，需要提取
     }
-    
-    const videoBuffer = await response.arrayBuffer();
-    const writeStream = (await import('fs')).createWriteStream(videoPath);
-    
-    await new Promise((resolve, reject) => {
-      writeStream.write(Buffer.from(videoBuffer));
-      writeStream.end();
-      writeStream.on('finish', () => resolve(undefined));
-      writeStream.on('error', reject);
-    });
-    
-    // Extract audio
-    await new Promise((resolve, reject) => {
-      ffmpeg(videoPath)
-        .noVideo()
-        .audioCodec('libmp3lame')
-        .audioBitrate('192k')
-        .output(audioPath)
-        .on('end', () => resolve(undefined))
-        .on('error', reject)
-        .run();
-    });
-    
-    // Read audio file
-    const audioData = await readFile(audioPath);
-    const audioBase64 = audioData.toString('base64');
-    
-    // Clean up
-    await unlink(videoPath);
-    await unlink(audioPath);
-    
-    return NextResponse.json({
-      audio: `data:audio/mp3;base64,${audioBase64}`,
-      videoTitle: info.basic_info.title,
-    });
+
+    try {
+      // 使用FFmpeg从本地视频文件提取音频
+      const audioPromise = new Promise<void>((resolve, reject) => {
+        const ffmpeg = spawn('ffmpeg', [
+          '-i', videoFilePath,
+          '-vn', // No video
+          '-acodec', format === 'mp3' ? 'libmp3lame' : 'aac',
+          '-ab', '192k',
+          audioFilePath
+        ]);
+
+        ffmpeg.stderr.on('data', (data) => {
+          console.log('FFmpeg stderr:', data.toString());
+        });
+
+        ffmpeg.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`FFmpeg process exited with code ${code}`));
+          }
+        });
+
+        ffmpeg.on('error', reject);
+      });
+
+      await audioPromise;
+      
+      // 读取音频文件并转换为base64
+      const audioBuffer = await fs.readFile(audioFilePath);
+      const stats = await fs.stat(audioFilePath);
+      
+      console.log(`Successfully extracted audio from cached video: ${audioFileName}`);
+
+      return NextResponse.json({
+        success: true,
+        audio: {
+          filename: audioFileName,
+          data: `data:audio/${format};base64,${audioBuffer.toString('base64')}`,
+          format,
+          size: stats.size
+        },
+        videoId: actualVideoId,
+        cached: false,
+        message: 'Audio extracted successfully from cached video'
+      });
+    } catch (error) {
+      console.error('Error extracting audio:', error);
+      // 清理失败的音频文件
+      await fs.unlink(audioFilePath).catch(() => {});
+      throw error;
+    }
   } catch (error) {
     console.error('Error extracting audio:', error);
-    const message = getYouTubeErrorMessage(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to extract audio from cached video',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

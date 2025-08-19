@@ -1,140 +1,121 @@
-import { Innertube } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
-import ffmpeg from 'fluent-ffmpeg';
-import { writeFile, mkdir, readdir, readFile, unlink } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { withRetry } from '@/lib/utils';
-import { getYouTubeErrorMessage } from '@/lib/youtube-error';
+import { promises as fs } from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 
-const createYouTubeClient = async () => {
-  return await Innertube.create({
-    lang: 'en',
-    location: 'US',
-    retrieve_player: true,
-    enable_safety_mode: false,
-  });
+const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
+const FRAMES_DIR = path.join(process.cwd(), 'cache', 'frames');
+
+// 确保帧目录存在
+const ensureFramesDir = async () => {
+  try {
+    await fs.access(FRAMES_DIR);
+  } catch {
+    await fs.mkdir(FRAMES_DIR, { recursive: true });
+  }
+};
+
+// 生成视频文件的唯一标识符
+const generateVideoId = (url: string): string => {
+  return createHash('md5').update(url).digest('hex');
 };
 
 export async function POST(request: NextRequest) {
   try {
-    const { url, frameRate = 1 } = await request.json();
+    const { url, videoId, frameCount = 10 } = await request.json();
     
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    if (!url && !videoId) {
+      return NextResponse.json({ error: 'URL or videoId is required' }, { status: 400 });
     }
 
-    let youtube;
-    let info;
-    
+    // 生成或使用提供的videoId
+    const actualVideoId = videoId || createHash('md5').update(url).digest('hex');
+    const videoFileName = `${actualVideoId}.mp4`;
+    const videoFilePath = path.join(CACHE_DIR, videoFileName);
+
+    // 检查缓存的视频文件是否存在
     try {
-      youtube = await createYouTubeClient();
-      console.log('Fetching video info with youtubei.js');
-      info = await youtube.getInfo(url);
-    } catch (youtubeError) {
-      console.error('YouTubeJS error:', youtubeError);
-      return NextResponse.json({ 
-        error: 'Frame extraction is temporarily unavailable due to YouTube API limitations. Please try again later or use a different video.' 
-      }, { status: 503 });
-    }
-    
-    // Get streaming data
-    const streamingData = info.streaming_data;
-    if (!streamingData) {
-      throw new Error('No streaming data available');
-    }
-    
-    // Find the best video format
-    const videoFormats = streamingData.adaptive_formats.filter(format => 
-      format.mime_type?.includes('video/mp4') && format.has_video
-    );
-    
-    if (videoFormats.length === 0) {
-      throw new Error('No video formats found');
-    }
-    
-    // Select the highest quality video format
-    const videoFormat = videoFormats.reduce((prev, current) => 
-      (current.bitrate || 0) > (prev.bitrate || 0) ? current : prev
-    );
-    
-    if (!videoFormat || !videoFormat.url) {
-      return NextResponse.json({ error: 'No suitable video format found' }, { status: 400 });
+      await fs.access(videoFilePath);
+    } catch {
+      return NextResponse.json({
+        error: 'Video not found in cache. Please download the video first.',
+        suggestion: 'Use the download-cache API to cache the video before extracting frames.'
+      }, { status: 404 });
     }
 
-    const tempDir = join(tmpdir(), 'ytbshow-frames');
-    await mkdir(tempDir, { recursive: true });
-    
-    const videoId = info.basic_info.id || Date.now().toString();
-    const videoPath = join(tempDir, `${videoId}.mp4`);
-    
-    // Download video using fetch
-    const response = await fetch(videoFormat.url);
-    if (!response.ok) {
-      throw new Error(`Failed to download video: ${response.statusText}`);
-    }
-    
-    const videoBuffer = await response.arrayBuffer();
-    const writeStream = (await import('fs')).createWriteStream(videoPath);
-    
-    await new Promise((resolve, reject) => {
-      writeStream.write(Buffer.from(videoBuffer));
-      writeStream.end();
-      writeStream.on('finish', () => resolve(undefined));
-      writeStream.on('error', reject);
-    });
-    
-    // Extract frames
-    const framesDir = join(tempDir, videoId);
-    await mkdir(framesDir, { recursive: true });
-    
-    await new Promise((resolve, reject) => {
-      ffmpeg(videoPath)
-        .fps(frameRate)
-        .output(join(framesDir, 'frame_%04d.png'))
-        .on('end', () => resolve(undefined))
-        .on('error', reject)
-        .run();
-    });
-    
-    // Read frames
-    const frameFiles = await readdir(framesDir);
-    const pngFiles = frameFiles.filter(file => file.endsWith('.png')).sort();
-    const frames: { url: string; filename: string }[] = [];
-    
-    for (const file of pngFiles) {
-      const framePath = join(framesDir, file);
-      const data = await readFile(framePath);
-      const filename = `${videoId}_${file}`;
-      
-      // Save to public temp directory
-      const publicDir = join(process.cwd(), 'public', 'temp');
-      await mkdir(publicDir, { recursive: true });
-      const publicPath = join(publicDir, filename);
-      await writeFile(publicPath, data);
-      
-      frames.push({
-        url: `/temp/${filename}`,
-        filename,
+    // 确保帧目录存在
+    await ensureFramesDir();
+
+    // 创建帧输出目录
+    const framesOutputDir = path.join(FRAMES_DIR, actualVideoId);
+    await fs.mkdir(framesOutputDir, { recursive: true });
+
+    try {
+      // 使用FFmpeg从本地视频文件提取帧
+      const framePromise = new Promise<string[]>((resolve, reject) => {
+        const ffmpeg = spawn('ffmpeg', [
+          '-i', videoFilePath,
+          '-vf', `select=not(mod(n\\,${Math.floor(100/frameCount)}))`,
+          '-vsync', 'vfr',
+          '-q:v', '2',
+          path.join(framesOutputDir, 'frame_%03d.jpg')
+        ]);
+
+        ffmpeg.stderr.on('data', (data) => {
+          console.log('FFmpeg stderr:', data.toString());
+        });
+
+        ffmpeg.on('close', async (code) => {
+          if (code === 0) {
+            try {
+              const files = await fs.readdir(framesOutputDir);
+              const frameFiles = files.filter(f => f.startsWith('frame_')).sort();
+              resolve(frameFiles);
+            } catch (error) {
+              reject(error);
+            }
+          } else {
+            reject(new Error(`FFmpeg process exited with code ${code}`));
+          }
+        });
+
+        ffmpeg.on('error', reject);
       });
+
+      const frameFiles = await framePromise;
       
-      // Clean up frame file
-      await unlink(framePath);
+      // 读取帧并转换为base64
+      const frames = [];
+      for (const frameFile of frameFiles.slice(0, frameCount)) {
+        const framePath = path.join(framesOutputDir, frameFile);
+        const frameBuffer = await fs.readFile(framePath);
+        frames.push({
+          filename: frameFile,
+          data: `data:image/jpeg;base64,${frameBuffer.toString('base64')}`
+        });
+      }
+
+      console.log(`Successfully extracted ${frames.length} frames from cached video`);
+
+      return NextResponse.json({
+        success: true,
+        frames,
+        videoId: actualVideoId,
+        frameCount: frames.length,
+        message: 'Frames extracted successfully from cached video'
+      });
+    } catch (error) {
+      console.error('Error extracting frames:', error);
+      // 清理失败的帧目录
+      await fs.rm(framesOutputDir, { recursive: true, force: true }).catch(() => {});
+      throw error;
     }
-    
-    // Clean up
-    await unlink(videoPath);
-    await readdir(framesDir).then(files => Promise.all(files.map(f => unlink(join(framesDir, f)))));
-    await readdir(tempDir).then(files => files.length === 0 ? null : unlink(tempDir).catch(() => {}));
-    
-    return NextResponse.json({
-      frames,
-      totalFrames: frames.length,
-      videoTitle: info.basic_info.title,
-    });
   } catch (error) {
     console.error('Error extracting frames:', error);
-    const message = getYouTubeErrorMessage(error);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to extract frames from cached video',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
