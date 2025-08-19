@@ -7,8 +7,16 @@ import { tmpdir } from 'os';
 import { readFile } from 'fs/promises';
 import { withRetry, getYouTubeErrorMessage } from '@/lib/retry';
 
-// Create agent to avoid bot detection
-const agent = ytdl.createAgent([]);
+// Create agent with advanced options to avoid bot detection and improve connection reliability
+const agent = ytdl.createAgent([], {
+  pipelining: 1, // Reduce pipelining to avoid overwhelming YouTube servers
+  maxRedirections: 5, // Allow more redirections
+  headersTimeout: 30000, // 30 second header timeout
+  bodyTimeout: 60000, // 60 second body timeout
+  connect: {
+    timeout: 30000 // 30 second connection timeout
+  }
+});
 
 export async function POST(request: NextRequest) {
   try {
