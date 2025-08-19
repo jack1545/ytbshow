@@ -1,6 +1,7 @@
 import { Innertube } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
+import fsSync from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
 import { getYouTubeErrorMessage } from '@/lib/youtube-error';
@@ -8,11 +9,15 @@ import { getYouTubeErrorMessage } from '@/lib/youtube-error';
 const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
 
 // 确保缓存目录存在
-const ensureCacheDir = async () => {
+const ensureCacheDir = () => {
   try {
-    await fs.access(CACHE_DIR);
-  } catch {
-    await fs.mkdir(CACHE_DIR, { recursive: true });
+    if (!fsSync.existsSync(CACHE_DIR)) {
+      fsSync.mkdirSync(CACHE_DIR, { recursive: true });
+      console.log(`Created cache directory: ${CACHE_DIR}`);
+    }
+  } catch (error) {
+    console.error('Error creating cache directory:', error);
+    throw new Error(`Failed to create cache directory: ${error}`);
   }
 };
 
@@ -50,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 确保缓存目录存在
-    await ensureCacheDir();
+    ensureCacheDir();
 
     // 生成视频ID和文件路径
     const videoId = generateVideoId(url);
@@ -125,6 +130,33 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       console.error('youtubei.js error:', getYouTubeErrorMessage(error));
+      
+      // 尝试使用oEmbed API获取基本信息
+      try {
+        const videoIdMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+        if (videoIdMatch) {
+          const videoId = videoIdMatch[1];
+          const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+          const oembedResponse = await fetch(oembedUrl);
+          
+          if (oembedResponse.ok) {
+            const oembedData = await oembedResponse.json();
+            return NextResponse.json({
+              error: 'Direct video download is currently unavailable due to YouTube API restrictions.',
+              suggestion: 'You can still view video information and use external tools to download the video manually.',
+              videoInfo: {
+                title: oembedData.title,
+                author: oembedData.author_name,
+                thumbnail: oembedData.thumbnail_url
+              },
+              details: getYouTubeErrorMessage(error)
+            }, { status: 503 });
+          }
+        }
+      } catch (oembedError) {
+        console.error('oEmbed fallback also failed:', oembedError);
+      }
+      
       return NextResponse.json({
         error: 'Video download is temporarily unavailable due to YouTube API limitations. Please try again later or use a different video.',
         details: getYouTubeErrorMessage(error)

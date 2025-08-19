@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
+import fsSync from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
-import { createHash } from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
+const execAsync = promisify(exec);
 const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
 const AUDIO_DIR = path.join(process.cwd(), 'cache', 'audio');
 
-// 确保音频目录存在
-const ensureAudioDir = async () => {
+// 确保音频输出目录存在
+const ensureAudioDir = () => {
   try {
-    await fs.access(AUDIO_DIR);
-  } catch {
-    await fs.mkdir(AUDIO_DIR, { recursive: true });
+    if (!fsSync.existsSync(AUDIO_DIR)) {
+      fsSync.mkdirSync(AUDIO_DIR, { recursive: true });
+      console.log(`Created audio directory: ${AUDIO_DIR}`);
+    }
+  } catch (error) {
+    console.error('Error creating audio directory:', error);
+    throw new Error(`Failed to create audio directory: ${error}`);
   }
 };
 
@@ -45,7 +51,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 确保音频目录存在
-    await ensureAudioDir();
+    ensureAudioDir();
 
     // 创建音频输出文件路径
     const audioFileName = `${actualVideoId}.${format}`;

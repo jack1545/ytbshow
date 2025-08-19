@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
+import fsSync from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
@@ -7,13 +8,19 @@ import { createHash } from 'crypto';
 const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
 const FRAMES_DIR = path.join(process.cwd(), 'cache', 'frames');
 
-// 确保帧目录存在
-const ensureFramesDir = async () => {
+// 确保帧输出目录存在
+const ensureFramesDir = (videoId: string) => {
+  const framesPath = path.join(FRAMES_DIR, videoId);
   try {
-    await fs.access(FRAMES_DIR);
-  } catch {
-    await fs.mkdir(FRAMES_DIR, { recursive: true });
+    if (!fsSync.existsSync(framesPath)) {
+      fsSync.mkdirSync(framesPath, { recursive: true });
+      console.log(`Created frames directory: ${framesPath}`);
+    }
+  } catch (error) {
+    console.error('Error creating frames directory:', error);
+    throw new Error(`Failed to create frames directory: ${error}`);
   }
+  return framesPath;
 };
 
 // 生成视频文件的唯一标识符
@@ -44,12 +51,8 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // 确保帧目录存在
-    await ensureFramesDir();
-
-    // 创建帧输出目录
-    const framesOutputDir = path.join(FRAMES_DIR, actualVideoId);
-    await fs.mkdir(framesOutputDir, { recursive: true });
+    // 确保帧输出目录存在
+    const framesOutputDir = ensureFramesDir(actualVideoId);
 
     try {
       // 使用FFmpeg从本地视频文件提取帧
