@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       frames,
       totalFrames: frames.length,
-      videoTitle: info.videoDetails.title,
+      videoTitle: info.basic_info.title,
     });
   } catch (error) {
     console.error('Error extracting frames:', error);
