@@ -24,10 +24,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'URL is required' }, { status: 400 });
     }
 
-    const youtube = await createYouTubeClient();
+    let youtube;
+    let info;
     
-    console.log('Fetching video info with youtubei.js');
-    const info = await youtube.getInfo(url);
+    try {
+      youtube = await createYouTubeClient();
+      console.log('Fetching video info with youtubei.js');
+      info = await youtube.getInfo(url);
+    } catch (youtubeError) {
+      console.error('YouTubeJS error:', youtubeError);
+      return NextResponse.json({ 
+        error: 'Audio extraction is temporarily unavailable due to YouTube API limitations. Please try again later or use a different video.' 
+      }, { status: 503 });
+    }
     
     // Get streaming data
     const streamingData = info.streaming_data;
