@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
-const FRAMES_DIR = path.join(process.cwd(), 'cache', 'frames');
-const AUDIO_DIR = path.join(process.cwd(), 'cache', 'audio');
+// 在Vercel等serverless环境中使用临时目录
+const CACHE_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'videos')
+  : path.join(process.cwd(), 'cache', 'videos');
+const FRAMES_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'frames')
+  : path.join(process.cwd(), 'cache', 'frames');
+const AUDIO_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'audio')
+  : path.join(process.cwd(), 'cache', 'audio');
 
 // 获取文件大小（字节）(暂时未使用)
 // function getFileSize(filePath: string): number {

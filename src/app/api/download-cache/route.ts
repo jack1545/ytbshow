@@ -6,7 +6,10 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { getYouTubeErrorMessage } from '@/lib/youtube-error';
 
-const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
+// 在Vercel等serverless环境中使用临时目录
+const CACHE_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'videos')
+  : path.join(process.cwd(), 'cache', 'videos');
 
 // 确保缓存目录存在
 const ensureCacheDir = () => {

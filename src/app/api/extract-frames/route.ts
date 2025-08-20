@@ -5,8 +5,13 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 
-const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
-const FRAMES_DIR = path.join(process.cwd(), 'cache', 'frames');
+// 在Vercel等serverless环境中使用临时目录
+const CACHE_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'videos')
+  : path.join(process.cwd(), 'cache', 'videos');
+const FRAMES_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'frames')
+  : path.join(process.cwd(), 'cache', 'frames');
 
 // 确保帧输出目录存在
 const ensureFramesDir = (videoId: string) => {

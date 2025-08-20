@@ -8,7 +8,10 @@ export async function GET(
 ) {
   try {
     const { filename } = await params;
-    const filePath = join(process.cwd(), 'public', 'temp', filename);
+    // 在Vercel等serverless环境中使用临时目录
+    const filePath = process.env.VERCEL 
+      ? join('/tmp', 'temp', filename)
+      : join(process.cwd(), 'public', 'temp', filename);
     
     const fileBuffer = await readFile(filePath);
     

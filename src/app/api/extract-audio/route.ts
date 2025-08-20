@@ -8,8 +8,13 @@ import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 
 // const execAsync = promisify(exec); // 暂时注释掉未使用的变量
-const CACHE_DIR = path.join(process.cwd(), 'cache', 'videos');
-const AUDIO_DIR = path.join(process.cwd(), 'cache', 'audio');
+// 在Vercel等serverless环境中使用临时目录
+const CACHE_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'videos')
+  : path.join(process.cwd(), 'cache', 'videos');
+const AUDIO_DIR = process.env.VERCEL 
+  ? path.join('/tmp', 'cache', 'audio')
+  : path.join(process.cwd(), 'cache', 'audio');
 
 // 确保音频输出目录存在
 const ensureAudioDir = () => {
